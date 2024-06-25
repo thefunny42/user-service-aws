@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: userservice
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/thefunny42/user-service.git
+    targetRevision: HEAD
+    path: charts/userservice
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: userservice
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true

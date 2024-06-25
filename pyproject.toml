@@ -1,0 +1,36 @@
+[project]
+name = "user_service_aws"
+description = "Deploy Simple user service on AWS"
+dynamic = ["dependencies"]
+authors = [{ name = 'Sylvain Viollon', email = 'thefunny@gmail.com' }]
+requires-python = '>=3.10'
+version = '0.1.0'
+
+[build-system]
+requires = ["hatchling", "hatch-requirements-txt"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+app = "user_service_aws.app:app"
+
+[tool.black]
+line-length = 79
+
+[tool.coverage.report]
+fail_under = 100
+
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements.txt"]
+
+[tool.hatch.envs.hatch-static-analysis]
+dependencies = ["black", "flake8", "isort"]
+
+[tool.hatch.envs.hatch-static-analysis.scripts]
+format-check = [
+    "black --check --diff {args:.}",
+    "isort --skip=cdk.out --check-only --diff {args:.}",
+]
+format-fix = ["isort --skip=cdk.out {args:.}", "black {args:.}"]
+lint-check = "flake8 --exclude=cdk.out {args:.}"
+lint-fix = "lint-check"
+
