@@ -2,9 +2,18 @@ import importlib.resources
 import os
 
 import yaml
-from aws_cdk import CfnParameter, Stack, aws_ec2, aws_eks, aws_iam
-from aws_cdk.lambda_layer_kubectl_v29 import KubectlV29Layer
+from aws_cdk import CfnParameter, Stack, Tags, aws_ec2, aws_eks, aws_iam
+from aws_cdk.lambda_layer_kubectl_v30 import KubectlV30Layer
 from constructs import Construct
+
+
+def load(filename):
+    with (
+        importlib.resources.files("user_service_aws")
+        .joinpath(filename)
+        .open("r") as stream
+    ):
+        return yaml.safe_load(stream)
 
 
 class UserServiceAwsStack(Stack):
@@ -21,12 +30,22 @@ class UserServiceAwsStack(Stack):
             ).value_as_string
         )
 
+        vpc = aws_ec2.Vpc(self, "user-service-vpc", max_azs=2)
+        for subnet in vpc.select_subnets(
+            subnet_type=aws_ec2.SubnetType.PUBLIC
+        ).subnets:
+            Tags.of(subnet).add("kubernetes.io/role/elb", "1")
+        for subnet in vpc.select_subnets(
+            subnet_type=aws_ec2.SubnetType.PRIVATE_WITH_EGRESS
+        ).subnets:
+            Tags.of(subnet).add("kubernetes.io/role/internal-elb", "1")
+
         cluster = aws_eks.Cluster(
             self,
             "user-service",
             cluster_name="user-service",
             version=aws_eks.KubernetesVersion.V1_30,
-            kubectl_layer=KubectlV29Layer(self, "user-service-layer"),
+            kubectl_layer=KubectlV30Layer(self, "user-service-layer"),
             default_capacity=0,
             masters_role=aws_iam.Role(
                 self,
@@ -34,13 +53,13 @@ class UserServiceAwsStack(Stack):
                 assumed_by=admin,  # type: ignore
             ),  # type: ignore
             authentication_mode=aws_eks.AuthenticationMode.API_AND_CONFIG_MAP,
-            vpc=aws_ec2.Vpc(self, "user-service-vpc", max_azs=2),
+            vpc=vpc,
             vpc_subnets=[
                 {"subnetType": aws_ec2.SubnetType.PRIVATE_WITH_EGRESS}
             ],
         )
 
-        # The API shokes on the ARN and I cannot find how to provide it.
+        # The API shokes on the ARN from organizations (I think)
         # cluster.grant_access(
         #     "user-service-admin-access",
         #     principal=admin.arn,
@@ -61,6 +80,7 @@ class UserServiceAwsStack(Stack):
             ami_type=aws_eks.NodegroupAmiType.AL2023_X86_64_STANDARD,
         )
 
+        self.configure_storage(cluster)
         self.configure_autoscaling(cluster)
         self.configure_cloudwatch(cluster)
 
@@ -72,15 +92,54 @@ class UserServiceAwsStack(Stack):
             version="7.2.1",
             namespace="argocd",
         )
-        # We can do more fancy things, but we just add the application
-        with (
-            importlib.resources.files("user_service_aws")
-            .joinpath("userservice.yaml")
-            .open("r") as stream
-        ):
-            cluster.add_manifest(
-                "user-service-application", yaml.safe_load(stream)
-            ).node.add_dependency(argo_cd)
+
+        manifest = cluster.add_manifest(
+            "user-service-application", load("userservice.yaml")
+        )
+        manifest.node.add_dependency(argo_cd)
+
+    def configure_storage(self, cluster: aws_eks.Cluster):
+        # The name of the service account is important
+        service_account = cluster.add_service_account(
+            "user-service-ebs",
+            name="ebs-csi-controller-sa",
+            namespace="kube-system",
+        )
+
+        service_account.role.add_managed_policy(
+            aws_iam.ManagedPolicy.from_aws_managed_policy_name(
+                "service-role/AmazonEBSCSIDriverPolicy"
+            )
+        )
+
+        addon = aws_eks.CfnAddon(
+            self,
+            "user-service-ebs-driver",
+            addon_name="aws-ebs-csi-driver",
+            cluster_name=cluster.cluster_name,
+            resolve_conflicts="OVERWRITE",
+            addon_version="v1.32.0-eksbuild.1",
+            service_account_role_arn=service_account.role.role_arn,
+        )
+        addon.node.add_dependency(service_account)
+
+        manifest = cluster.add_manifest(
+            "user-service-ebs-storage-class",
+            {
+                "apiVersion": "storage.k8s.io/v1",
+                "kind": "StorageClass",
+                "metadata": {
+                    "name": "ebs-sc",
+                    "annotations": {
+                        "storageclass.kubernetes.io/is-default-class": "true"
+                    },
+                },
+                "provisioner": "ebs.csi.aws.com",
+                "volumeBindingMode": "WaitForFirstConsumer",
+                "parameters": {"type": "gp3"},
+            },
+        )
+        manifest.node.add_dependency(addon)
 
     def configure_autoscaling(self, cluster: aws_eks.Cluster):
         service_account = cluster.add_service_account(
@@ -109,7 +168,7 @@ class UserServiceAwsStack(Stack):
             )
         )
 
-        cluster.add_helm_chart(
+        chart = cluster.add_helm_chart(
             "ClusterAutoscaler",
             chart="cluster-autoscaler",
             release="cluster-autoscaler",
@@ -126,17 +185,18 @@ class UserServiceAwsStack(Stack):
                     "clusterName": cluster.cluster_name,
                 },
             },
-            version="9.37.0",
             namespace="kube-system",
-        ).node.add_dependency(service_account)
+        )
+        chart.node.add_dependency(service_account)
 
-        cluster.add_helm_chart(
+        chart = cluster.add_helm_chart(
             "MetricsServer",
             chart="metrics-server",
             release="metrics-server",
             repository="https://charts.bitnami.com/bitnami",
             namespace="kube-system",
-        ).node.add_dependency(service_account)
+        )
+        chart.node.add_dependency(service_account)
 
     def configure_cloudwatch(self, cluster: aws_eks.Cluster):
         service_account = cluster.add_service_account(
@@ -151,7 +211,7 @@ class UserServiceAwsStack(Stack):
             )
         )
 
-        cluster.add_helm_chart(
+        chart = cluster.add_helm_chart(
             "AwsCloudWatchMetrics",
             chart="aws-cloudwatch-metrics",
             release="aws-cloudwatch-metrics",
@@ -164,7 +224,8 @@ class UserServiceAwsStack(Stack):
                 },
             },
             namespace="kube-system",
-        ).node.add_dependency(service_account)
+        )
+        chart.node.add_dependency(service_account)
 
         cluster.add_helm_chart(
             "AwsForFluentBit",

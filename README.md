@@ -1,7 +1,9 @@
-# Deploy user service on Amazon
+# Deploy user service on Amazon with CDK
 
-This creates a EKS cluster on amazon for a couple of bucks, install ArgoCD and
-hooks up the user service application there.
+This creates an EKS cluster on amazon, install ArgoCD and hooks up the user
+service application there.
+
+This will cost about 2 dollars for a few hours of testing.
 
 This is built with hatch, so you need to have hatch installed (for instance
 via pipx), and you need to have the Amazon CDK installed. You can do that with
@@ -16,16 +18,19 @@ To setup the environment:
     npm install -g aws-cdk
     cdk bootstrap
     cdk deploy --parameters AdminArn=$ADMIN_ARN
-    aws eks update-kubeconfig --name user-service --region $REGION --role-arn $ADMIN_ARN
-    aws eks get-token --name user-service --region <your $REGION --role-arn $ADMIN_ARN
 ```
 
-The deploy step can take a bit of time the first time. You can validate the
-result by looking at the resources and check that they all come online:
+The deploy step can take a bit of time the first time (about 16 minutes). Follow
+the instructions in the output to configure kubectl.
+
+You can validate the result by looking at the resources and check that they
+all come online:
 
 ```shell
     kubectl get all -A
 ```
+
+After a few minutes ArgoCD will pull the application and put in place.
 
 ## Access ArgoCD
 
