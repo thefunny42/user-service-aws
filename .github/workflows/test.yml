@@ -1,12 +1,6 @@
-name: Test and Build service
+name: Test CDK
 on:
   push:
-    paths-ignore:
-      - 'charts/opa/policies/**'
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   test:
