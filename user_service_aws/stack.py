@@ -3,9 +3,9 @@ from aws_cdk.lambda_layer_kubectl_v30 import KubectlV30Layer
 from constructs import Construct
 
 from .autoscaling import EksAutoScaling
-from .storage import EksStorage
 from .cloudwatch import EksCloudWatch
 from .service import UserService
+from .storage import EksStorage
 
 
 class UserServiceAwsStack(Stack):

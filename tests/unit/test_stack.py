@@ -17,3 +17,9 @@ def test_charts():
     template.has_resource_properties(
         "Custom::AWSCDK-EKS-HelmChart", {"Chart": "argo-cd"}
     )
+    template.has_resource_properties(
+        "Custom::AWSCDK-EKS-HelmChart", {"Chart": "aws-for-fluent-bit"}
+    )
+    template.has_resource_properties(
+        "Custom::AWSCDK-EKS-HelmChart", {"Chart": "aws-cloudwatch-metrics"}
+    )

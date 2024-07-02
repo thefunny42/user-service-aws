@@ -5,7 +5,7 @@ import aws_cdk as cdk
 from .stack import UserServiceAwsStack
 
 
-def app():
+def app():  # pragma: no cover
     app = cdk.App()
     UserServiceAwsStack(
         app,

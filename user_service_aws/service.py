@@ -1,4 +1,5 @@
 import importlib.resources
+
 import yaml
 from aws_cdk import Stack, aws_eks
 from constructs import Construct
