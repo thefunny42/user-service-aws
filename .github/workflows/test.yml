@@ -30,8 +30,6 @@ jobs:
           node-version: 'latest'
       - name: Instal CDK
         run: npm install aws-cdk
-      - name: Code Analysis
-        run: hatch fmt --check
       - name: Install Hatch
         uses: pypa/hatch@install
       - name: Code Analysis
