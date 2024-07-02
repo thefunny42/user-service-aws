@@ -13,7 +13,6 @@ To setup the environment:
 
 ```shell
     export ADMIN_ARN=$(aws sts get-caller-identity --query Arn --output text  | grep '^arn:')
-    export REGION=$(aws configure get region)
     nave use latest
     npm install -g aws-cdk
     cdk bootstrap
